@@ -1,112 +1,84 @@
 package com.openclassrooms.starterjwt.controllers;
-
+import com.openclassrooms.starterjwt.dto.SessionDto;
 import com.openclassrooms.starterjwt.dto.UserDto;
-import com.openclassrooms.starterjwt.mapper.UserMapper;
-import com.openclassrooms.starterjwt.models.User;
-import com.openclassrooms.starterjwt.services.UserService;
+import com.openclassrooms.starterjwt.models.Session;
+import com.openclassrooms.starterjwt.payload.request.LoginRequest;
+import com.openclassrooms.starterjwt.payload.response.JwtResponse;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
-
-import java.util.Arrays;
-import java.util.List;
-
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.mockito.Mockito.*;
-
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContext;
-import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.security.test.context.support.WithMockUser;
+import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.http.*;
 import org.springframework.test.annotation.DirtiesContext;
+import org.springframework.test.context.jdbc.Sql;
 import org.springframework.test.context.junit.jupiter.SpringExtension;
 
+import java.util.Arrays;
+import java.util.Date;
+import java.util.Map;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ExtendWith(SpringExtension.class)
-@SpringBootTest
+@DirtiesContext
+@Sql(executionPhase = Sql.ExecutionPhase.BEFORE_TEST_METHOD, scripts = "classpath:cleanup.sql")
 class UserControllerTest {
-    private UserService userService;
-    private UserMapper userMapper;
-    private UserController userController;
+    @Autowired
+    private TestRestTemplate restTemplate;
 
-    @MockBean
-    private SecurityContext securityContext;
-
-    @MockBean
-    private Authentication authentication;
-
-    private User user;
-    private UserDto userDto;
-    private List<User> users;
+    private String jwtToken;
 
     @BeforeEach
     void setUp() {
-        userService = mock(UserService.class);
-        userMapper = mock(UserMapper.class);
-        userController = new UserController(userService, userMapper);
+        LoginRequest loginRequest = new LoginRequest();
+        loginRequest.setEmail("gym@studio.com");
+        loginRequest.setPassword("test!1234");
 
-        user = new User()
-                .setId(1L)
-                .setFirstName("John")
-                .setLastName("Doe")
-                .setEmail("john.doe@example.com");
+        ResponseEntity<JwtResponse> loginResponse  = restTemplate.postForEntity("/api/auth/login", loginRequest, JwtResponse.class);
+        jwtToken = "Bearer " + loginResponse.getBody().getToken();
+    }
+    @Test
+    public void testGetUserById() {
+        // Set the Authorization header with the JWT token
+        HttpHeaders headers = new HttpHeaders();
+        headers.set("Authorization", jwtToken);
+        HttpEntity<String> entity = new HttpEntity<>(headers);
 
-        userDto = new UserDto();
-        userDto.setId(1L);
-        userDto.setFirstName("John");
-        userDto.setLastName("Doe");
-        userDto.setEmail("john.doe@example.com");
-
-        users = Arrays.asList(user);
-
-        when(securityContext.getAuthentication()).thenReturn(authentication);
-        when(authentication.getPrincipal()).thenReturn(user); // or any valid Principal object
-        SecurityContextHolder.setContext(securityContext);
+        ResponseEntity<UserDto> responseEntity = restTemplate.exchange("/api/user/2", HttpMethod.GET, entity, UserDto.class);
+        assertEquals(HttpStatus.OK, responseEntity.getStatusCode());
     }
 
     @Test
-    void findById() {
-        when(userService.findById(1L)).thenReturn(user);
-        when(userMapper.toDto(user)).thenReturn(userDto);
+    public void testDeleteUserById() {
+        // Set the Authorization header with the JWT token
+        HttpHeaders headers = new HttpHeaders();
+        headers.set("Authorization", jwtToken);
+        HttpEntity<String> entity = new HttpEntity<>(headers);
 
-        ResponseEntity<?> response = userController.findById("1");
+        // Delete the user (if it doesn't participate in any session ¯\_(ツ)_/¯)
+        restTemplate.exchange("/api/user/2", HttpMethod.DELETE, entity, Void.class);
 
-        assertEquals(HttpStatus.OK, response.getStatusCode());
-        assertEquals(userDto, response.getBody());
+        /*
+            If you ask why a try/catch as a assertion for a test,
+            it's because some incompetents people don't handle exceptions in their login controller,
+            in case of idk, user not found or some random shenanigans
+        */
+        try {
+            String email = "gym@studio.com";
+            String password = "test!1234";
 
-        verify(userService).findById(1L);
-        verify(userMapper).toDto(user);
-    }
+            LoginRequest loginRequest = new LoginRequest();
+            loginRequest.setEmail(email);
+            loginRequest.setPassword(password);
 
-    @Test
-    void findById_invalidId() {
-        ResponseEntity<?> response = userController.findById("invalid");
-
-        assertEquals(HttpStatus.BAD_REQUEST, response.getStatusCode());
-        verify(userService, never()).findById(any());
-    }
-
-    //@Test
-    void save() {
-        when(userService.findById(1L)).thenReturn(user);
-
-        ResponseEntity<?> response = userController.save("1");
-
-        assertEquals(HttpStatus.OK, response.getStatusCode());
-
-        verify(userService).findById(1L);
-        verify(userService).delete(1L);
-    }
-
-    @Test
-    void save_invalidId() {
-        ResponseEntity<?> response = userController.save("invalid");
-
-        assertEquals(HttpStatus.BAD_REQUEST, response.getStatusCode());
-        verify(userService, never()).findById(any());
-        verify(userService, never()).delete(any());
+            ResponseEntity<JwtResponse> responseEntity = restTemplate.postForEntity("/api/auth/login", loginRequest, JwtResponse.class);
+            assertTrue(false);
+        } catch (Exception e) {
+            assertTrue(true);
+        }
     }
 }

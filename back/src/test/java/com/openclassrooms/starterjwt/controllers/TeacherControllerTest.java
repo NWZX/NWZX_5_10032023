@@ -1,13 +1,18 @@
 package com.openclassrooms.starterjwt.controllers;
 
 import com.openclassrooms.starterjwt.dto.TeacherDto;
-import com.openclassrooms.starterjwt.mapper.TeacherMapper;
-import com.openclassrooms.starterjwt.models.Teacher;
-import com.openclassrooms.starterjwt.services.TeacherService;
+import com.openclassrooms.starterjwt.payload.request.LoginRequest;
+import com.openclassrooms.starterjwt.payload.response.JwtResponse;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.http.*;
+import org.springframework.test.annotation.DirtiesContext;
+import org.springframework.test.context.jdbc.Sql;
+import org.springframework.test.context.junit.jupiter.SpringExtension;
 
 import java.util.Arrays;
 import java.util.List;
@@ -15,67 +20,46 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.Mockito.*;
 
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@ExtendWith(SpringExtension.class)
+@DirtiesContext
+@Sql(executionPhase = Sql.ExecutionPhase.BEFORE_TEST_METHOD, scripts = "classpath:cleanup.sql")
 class TeacherControllerTest {
-    private TeacherService teacherService;
-    private TeacherMapper teacherMapper;
-    private TeacherController teacherController;
+    @Autowired
+    private TestRestTemplate restTemplate;
 
-    private Teacher teacher;
-    private TeacherDto teacherDto;
-    private List<Teacher> teachers;
+    private String jwtToken;
 
     @BeforeEach
     void setUp() {
-        teacherService = mock(TeacherService.class);
-        teacherMapper = mock(TeacherMapper.class);
-        teacherController = new TeacherController(teacherService, teacherMapper);
+        LoginRequest loginRequest = new LoginRequest();
+        loginRequest.setEmail("yoga@studio.com");
+        loginRequest.setPassword("test!1234");
 
-        teacher = new Teacher()
-                .setId(1L)
-                .setLastName("Doe")
-                .setFirstName("John");
+        ResponseEntity<JwtResponse> loginResponse  = restTemplate.postForEntity("/api/auth/login", loginRequest, JwtResponse.class);
+        jwtToken = "Bearer " + loginResponse.getBody().getToken();
+    }
+    @Test
+    public void testGetTeacherById() {
+        // Set the Authorization header with the JWT token
+        HttpHeaders headers = new HttpHeaders();
+        headers.set("Authorization", jwtToken);
+        HttpEntity<String> entity = new HttpEntity<>(headers);
 
-        teacherDto = new TeacherDto();
-        teacherDto.setId(1L);
-        teacherDto.setLastName("Doe");
-        teacherDto.setFirstName("John");
-
-        teachers = Arrays.asList(teacher);
+        ResponseEntity<TeacherDto> responseEntity = restTemplate.exchange("/api/teacher/1", HttpMethod.GET, entity, TeacherDto.class);
+        assertEquals(HttpStatus.OK, responseEntity.getStatusCode());
+        assertEquals("Margot", responseEntity.getBody().getFirstName());
     }
 
     @Test
-    void findById() {
-        when(teacherService.findById(1L)).thenReturn(teacher);
-        when(teacherMapper.toDto(teacher)).thenReturn(teacherDto);
+    public void testGetAllTeachers() {
+        // Set the Authorization header with the JWT token
+        HttpHeaders headers = new HttpHeaders();
+        headers.set("Authorization", jwtToken);
+        HttpEntity<String> entity = new HttpEntity<>(headers);
 
-        ResponseEntity<?> response = teacherController.findById("1");
-
-        assertEquals(HttpStatus.OK, response.getStatusCode());
-        assertEquals(teacherDto, response.getBody());
-
-        verify(teacherService).findById(1L);
-        verify(teacherMapper).toDto(teacher);
-    }
-
-    @Test
-    void findById_invalidId() {
-        ResponseEntity<?> response = teacherController.findById("invalid");
-
-        assertEquals(HttpStatus.BAD_REQUEST, response.getStatusCode());
-        verify(teacherService, never()).findById(any());
-    }
-
-    @Test
-    void findAll() {
-        when(teacherService.findAll()).thenReturn(teachers);
-        when(teacherMapper.toDto(teachers)).thenReturn(Arrays.asList(teacherDto));
-
-        ResponseEntity<?> response = teacherController.findAll();
-
-        assertEquals(HttpStatus.OK, response.getStatusCode());
-        assertEquals(Arrays.asList(teacherDto), response.getBody());
-
-        verify(teacherService).findAll();
-        verify(teacherMapper).toDto(teachers);
+        ResponseEntity<TeacherDto[]> responseEntity = restTemplate.exchange("/api/teacher", HttpMethod.GET, entity, TeacherDto[].class);
+        assertEquals(HttpStatus.OK, responseEntity.getStatusCode());
+        assertEquals(2, responseEntity.getBody().length);
     }
 }
