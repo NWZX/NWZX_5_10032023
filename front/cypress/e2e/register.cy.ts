@@ -1,5 +1,5 @@
 describe('Register spec', () => {
-  it('Register successfull', () => {
+  it('Register successfully', () => {
     cy.visit('/register');
 
     cy.intercept('POST', '/api/auth/register', {
