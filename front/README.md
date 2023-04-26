@@ -6,11 +6,11 @@ This project was generated with [Angular CLI](https://github.com/angular/angular
 
 Git clone:
 
-> git clone https://github.com/OpenClassrooms-Student-Center/P5-Full-Stack-testing
+> git clone https://github.com/NWZX/NWZX_5_10032023.git
 
 Go inside folder:
 
-> cd yoga
+> cd front
 
 Install dependencies:
 
